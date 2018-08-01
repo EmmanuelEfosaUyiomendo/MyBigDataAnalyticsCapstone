@@ -1,0 +1,1146 @@
+---
+title: "Householdpowerconsumption"
+author: "Efosa Uyiomendo"
+date: "May 13, 2018"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+
+```{r householdpower consumption}
+hholdpcon <- read.csv("D:/BigDataAnalytics/Capstone/household_power_consumption/hholdpcon.txt", header= TRUE, sep=";")
+ View(hholdpcon)
+
+summary(hholdpcon)
+str(hholdpcon)
+nrow(hholdpcon)
+```
+
+
+#When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+hdrnames <- c("wdate", "wtime", "apower", "rpower", "voltage", "intensity",  "smeter1", "smeter2", "smeter3")
+ colnames(hholdpcon) <- hdrnames 
+ hholdpcon$wdate <- as.Date(hholdpcon$wdate, format = "%d/%m/%Y")
+
+ hholdpcon$apower <- as.numeric(as.character(hholdpcon$apower))
+ hholdpcon$rpower <- as.numeric(as.character(hholdpcon$rpower))
+ hholdpcon$voltage <- as.numeric(as.character(hholdpcon$voltage))
+ hholdpcon$intensity <- as.numeric(as.character(hholdpcon$intensity))
+ hholdpcon$smeter1 <- as.numeric(as.character(hholdpcon$smeter1))
+ hholdpcon$smeter2 <- as.numeric(as.character(hholdpcon$smeter2))
+ hholdpcon$smeter3 <- as.numeric(as.character(hholdpcon$smeter3))
+ 
+ head(hholdpcon)
+ 
+install.packages('lubridate')
+library(lubridate)
+ library(chron)
+ hholdpcon$hrofday <- lubridate::hour(lubridate::hms((hholdpcon$wtime)))
+head(hholdpcon)
+
+
+```
+
+
+# PREPROCESSING
+```{r}
+# 1.0  Is there any missing data?
+str(hholdpcon)  
+table(is.na(hholdpcon))  # False ???, True ???. There are ????? missing data
+
+sapply(hholdpcon, function(x) sum(is.na(x)))   # Breakdown wdate(0), wtime(0), apower(0), rpower(0), voltage(0), intensity (0)  smeter1(0), smeter2(0), smeter3(0), smeter(0)
+
+#hholdpcon <- hholdpcon[complete.cases(hholdpcon), ] # removes missing values
+
+#nrow(hholdpcon)  #  rows with the missing values removed
+
+# 
+
+head(hholdpcon)
+cor(hholdpcon[, 3:9 ], method = "pearson", use = "complete.obs")
+# correlation with missing values ignored
+
+```
+
+
+
+
+## Data.table Package for Aggregation
+
+```{r pressure, echo=FALSE}
+install.packages(data.table)
+library(data.table)
+hholdpcon <- data.table(hholdpcon)
+head(hholdpcon)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+
+```{r householdpower consumption}
+
+#USDAclean <- USDA1[complete.cases(USDA1), ]
+#USDA1 <- USDA[rowSums(is.na(USDA[ , 2:15])) <= 4, ]
+ #final[complete.cases(final[ , 5:6]),]
+#final[rowSums(is.na(final[ , 5:6])) == 0, ]
+#hholdclean <- hholdpcon[complete.cases(hholdpcon[ , 3:9]), ]
+#hholdclean2 <- hholdpcon[rowSums(is.na(hholdpcon[ , 3:9])) == 0, ]
+hholdclean <- hholdpcon[complete.cases(hholdpcon), ]
+hholdclean2 <- hholdpcon[rowSums(is.na(hholdpcon)) == 0, ]
+summary(hholdpcon)
+
+table(is.na(hholdclean2))  # False ???, True ???. There are ????? missing data
+
+sapply(hholdclean2, function(x) sum(is.na(x)))   # Breakdown wdate(0), wtime(0), apower(0), rpower(0), voltage(0), intensity (0)  smeter1(0), smeter2(0), smeter3(0), smeter(0)
+
+install.packages("pastecs")
+library(pastecs)
+head(hholdclean2)
+nrow(hholdclean2)
+nrow(hholdpcon)
+nrow(hholdclean)
+```
+
+
+
+# Test for Outliers and their Removal
+```{r cars}
+head(hholdclean2)
+str(hholdclean2)
+
+ hholdx <- hholdclean2[, c(3:9)]       # dataset for mirror for outlier detection, excludes date & time. We have not determined the Class variable though we expect it to be some combination of active power and sub-meters
+m_dist <- mahalanobis(hholdx, colMeans(hholdx), cov(hholdx))  # mahalanobis function check help
+cmchMD <- 1 - pchisq(m_dist, 6)    # with dof set as 8Calculate the cumulative chi squared function for the 4521 MV variable 7 variables  dof is 6
+hholdx$MD <- cmchMD
+hholdx$outlier <- "No"
+hholdx$outlier[hholdx$MD <0.01] <- "Yes"    # Threshold set to 99% Confidence
+hholdclean2$outlier <- hholdx$outlier
+hholdT <- subset(hholdx, hholdx$outlier == "No") 
+hholdclean22 <- subset(hholdclean2, hholdclean2$outlier == "No")  # clean data with NA.RM with outliers as well.
+nrow(hholdx)  #2,049,280
+nrow(hholdT)  #1,888,036
+nrow(hholdclean22)
+# for electricity consumption data, meaning 161,244 were removed. Thus figure was arrived at after tuning the confidence interval to 99% and using a degree of freedoom of 8.
+
+opar <- par(no.readonly=TRUE)
+par(mfrow=c(2,2))
+boxplot(hholdclean2$apower)$out
+boxplot(hholdT$apower)$out
+hist(hholdx$apower, main = "with outliers")
+hist(hholdT$apower, main = "outliers removed")
+par(opar) 
+
+head(hholdT)
+
+```
+
+
+# Hourly DATA WITH ONLY MISSING DATA REMOVED BEFORE HAND
+```{r cars}
+
+
+head(hholdclean2)  # NA removed
+library(data.table)
+head(hholdclean22)    # NA and outliers removed
+
+
+hholdhrly2 <- hholdclean2[, list(m_apower=mean(apower, na.rm = TRUE), m_rpower=mean(rpower,  na.rm = TRUE),  m_voltage= mean(voltage, na.rm = TRUE), m_intensity=mean(intensity,  na.rm = TRUE), m_smeter1=mean(smeter1,  na.rm = TRUE), m_smeter2=mean(smeter2,  na.rm = TRUE), m_smeter3=mean(smeter3,  na.rm = TRUE)), by = c('wdate','hrofday')] #data set is grouped by date,then hour
+
+head(hholdhrly2)
+tail(hholdhrly2)
+
+
+hholdhrly22 <- hholdclean22[, list(m_apower=mean(apower, na.rm = TRUE), m_rpower=mean(rpower,  na.rm = TRUE),  m_voltage= mean(voltage, na.rm = TRUE), m_intensity=mean(intensity,  na.rm = TRUE), m_smeter1=mean(smeter1,  na.rm = TRUE), m_smeter2=mean(smeter2,  na.rm = TRUE), m_smeter3=mean(smeter3,  na.rm = TRUE)), by = c('wdate','hrofday')] #data set is grouped by date,then hour
+
+head(hholdhrly22)
+tail(hholdhrly22)
+
+#table(is.na(hholdhrly2))  # False ???, True ???. There are ????? missing data
+# FALSE   TRUE 
+#376690   3789
+
+hholdhrly22$power_subs=hholdhrly22$m_smeter1+hholdhrly22$m_smeter2+hholdhrly22$m_smeter3
+hholdhrly22$power_kwh = 0.001*hholdhrly22$power_subs + hholdhrly22$m_apower
+vv <- hholdhrly22$power_kwh
+tt <- hholdhrly22$m_apower
+
+plot(tt,type = "o",col = "red", xlab = "Hour", ylab = "Electricity Consumption", 
+   main = "electricity consumption chart-NA.RM & Outliers RM")
+
+attach(hholdhrly22)
+boxplot(m_apower, m_rpower,  m_smeter1, m_smeter2, m_smeter3, data=hholdhrly22, main="Consumption Boxplots", 
+	xlab="time", ylab="Consumption",
+names = c("m_apower", "m_rpower", "m_smter1", "m_smeter2", "m_smeter3"),
+las = 2,
+col = c("orange","red"),
+border = "brown",
+horizontal = FALSE,
+notch = TRUE
+	)
+detach(hholdhrly22)
+
+#REAPEAT plots with Outliers in place
+hholdhrly2$power_subs=hholdhrly2$m_smeter1+hholdhrly2$m_smeter2+hholdhrly2$m_smeter3
+hholdhrly2$power_kwh = 0.001*hholdhrly2$power_subs + hholdhrly2$m_apower
+bb <- hholdhrly2$power_kwh
+dd <- hholdhrly2$m_apower
+
+plot(bb,type = "o",col = "red", xlab = "Hour", ylab = "Electricity Consumption", 
+   main = "electricity consumption chart-NA.RM & Outliers in place")
+
+attach(hholdhrly2)
+boxplot(m_apower, m_rpower,  m_smeter1, m_smeter2, m_smeter3, data=hholdhrly22, main="Consumption Boxplots outliers intact", 
+	xlab="time", ylab="Consumption",
+names = c("m_apower", "m_rpower", "m_smter1", "m_smeter2", "m_smeter3"),
+las = 2,
+col = c("orange","red"),
+border = "brown",
+horizontal = FALSE,
+notch = TRUE
+	)
+detach(hholdhrly2)
+
+
+
+```
+
+
+
+
+
+
+```
+
+
+# CREATE BASIS FOR AGGREGATION 
+```{r cars}
+head(hholdhrly2)  #dataset with all all missing values removed
+tail(hholdhrly2)
+
+
+head(hholdhrly22)  #dataset with all all missing values removed and outliers removed with CIntv 99% abd DOF 6
+tail(hholdhrly22)
+
+library(data.table)
+
+hholdTHR <- hholdhrly22  # mirror data without NA and Outliers
+
+head(hholdTHR)
+tail(hholdTHR)
+
+# data for AGGREGATation
+hholdTM <- hholdTHR
+
+nrow((hholdTM)) # base for aggregate monthly data
+head(hholdTM)
+#hholdTM$monthabb  <- dstmdlx3$monthabb
+#hholdTM$dayofwk  <- dstmdlx3$dayofwk
+
+library(data.table)
+library(zoo)
+hholdTM$yearmon <- as.yearmon(hholdTM$wdate, "%m/%Y")
+hholdTM$wkofyr <-lubridate::week(ymd(hholdTM$wdate))
+hholdTM$yr <-  strftime(ymd(hholdTM$wdate),'%Y')
+
+head(hholdTM)
+
+hholdTM <- as.data.table(hholdTM)
+setkey(hholdTM, yr, yearmon, wkofyr, wdate)
+
+# aggregate data by month, target is active power for time series
+hholdTMLY <- as.data.frame(hholdTM[, j=list(active_power= mean(m_apower, na.rm = TRUE), react_power = mean(m_rpower, na.rm = TRUE)), by = list(yearmon)])
+
+
+# aggregate data by WEEK, target is active power for time series
+
+hholdWKLY <-  as.data.frame(hholdTM[, j=list(W_active_power= mean(m_apower, na.rm = TRUE), W_react_power = mean(m_rpower, na.rm = TRUE)), by = list(yr, wkofyr)])
+#data set is grouped by year ,then week of year
+
+
+# aggregate data by DAY, target is active power for time series
+
+hholdDAY <-  as.data.frame(hholdTM[, j=list(D_active_power= mean(m_apower, na.rm = TRUE), D_react_power = mean(m_rpower, na.rm = TRUE)), by = list(wdate)])
+#data set is grouped by year ,then week of year by = c('Date'))] #data set is grouped by Days dat
+
+head(hholdTMLY)
+head(hholdDAY)
+head(hholdWKLY)
+
+xx <- hholdTM$m_apower
+XMX <- hholdTMLY$active_power
+XDX <- hholdDAY$D_active_power
+XWX <- hholdWKLY$W_active_power
+
+
+par(mfrow=c(2,2))
+ylim1 <- c(0.2, 3.0)
+ylim2 <- c(0.2, 2.0)
+plot(xx, main="Raw time series")
+plot(XMX, main="Monthly Time Series Active Power)", ylim=ylim2,ylab="active power monthly avg", xlab= "month")
+plot(XWX, main="Weekly Time Series Active Power", ylim=ylim2,ylab="active power weekly avg", xlab= "Week")
+plot(XDX, main="Daily Time Series Active Power", ylim=ylim2, ylab="active power daily avg", xlab= "Day")
+par(opar)
+
+
+
+```
+
+
+#3 Time Series RAW DATA
+```{r cars}
+install.packages("forecast")
+library(forecast)
+
+#msts modelling of time series power consumption using dual seasonal data, Daily(24hrs) and Annual (8766hours)
+xx <- hholdTM$m_apower
+XMX <- hholdTMLY$active_power  # monthly aggregate
+XDX <- hholdDAY$D_active_power # daily aggregate
+XWX <- hholdWKLY$W_active_power # weekly aggregate
+
+pwr <- msts(xx, start=c(2006-12-16), seasonal.periods = 8760)
+pwr.fit <- tbats(pwr)
+plot(forecast(pwr.fit))
+plot(pwr, main="Time Series Plot of Electricity Consumption")
+
+# Moving Average Smoothening with periods 3, 5, 9
+library(forecast)
+opar <- par(no.readonly=TRUE)
+par(mfrow=c(2,2))
+ylim <- c(0.2, 7.0)
+plot(xx, main="Raw time series")
+plot(ma(xx, 3), main="Simple Moving Averages (k=3)", ylim=ylim)
+plot(ma(xx, 5), main="Simple Moving Averages (k=5)", ylim=ylim)
+plot(ma(xx, 9), main="Simple Moving Averages (k=9)", ylim=ylim)
+par(opar)
+
+# Moving Average Smoothening with periods 13, 15, 99
+library(forecast)
+opar <- par(no.readonly=TRUE)
+par(mfrow=c(2,2))
+ylim <- c(0.2, 7.0)
+plot(xx, main="Raw time series")
+plot(ma(xx, 13), main="Simple Moving Averages (k=13)", ylim=ylim)
+plot(ma(xx, 15), main="Simple Moving Averages (k=15)", ylim=ylim)
+plot(ma(xx, 19), main="Simple Moving Averages (k=19)", ylim=ylim)
+par(opar)
+
+```
+
+
+```
+
+
+
+
+
+
+## Read in Weather Data
+```{r cars}
+scxwedar <- read.csv("D:/BigDataAnalytics/Capstone/scxwedar.csv", header= TRUE, sep=";")
+ View(scxwedar)
+ head(scxwedar)
+
+```
+
+
+
+## Allow header name change
+```{r cars}
+hdrnames2 <- c("Year", "Month", "Day", "Hour", "Minute", "Temp",  "Humd", "Pressure", "Precipt", "Snowfall", "CCloudT", "CCloudH","CCloudM", "CCloudL", "SunShD", "Radiatn", "WndSpeed", "WndDir", "WndSpeed80m", "WndDir80m", "WndSpeed900mb", "WndDir900mb", "WndGusts")
+ colnames(scxwedar) <- hdrnames2
+ head(scxwedar)
+install.packages("lubridate")
+library(lubridate)
+ head(scxwedar)
+
+scxwedar$Date <- as.Date(with(scxwedar, paste(Year, Month, Day, sep="-")),
+           "%Y-%m-%d ")
+scxwedar <- scxwedar[, c(24, 4:23)]
+scxwedar <- scxwedar[, -c(3)]
+head(scxwedar)
+```
+
+
+
+
+##Align Datasets
+```{r cars}
+# To combine the two datasets we will first align both 17H of 16 December 2006 TO  21H of 26Nov 2010
+scxwedar1 <- scxwedar[scxwedar$Date >= as.Date("2006-12-16"), ]
+scxwedar1 <- scxwedar1[scxwedar1$Date <= as.Date("2010-11-26"), ]
+head(scxwedar1)
+tail(scxwedar1)
+scxwedar2 <- scxwedar1[-c(1:17),]
+scxwedar3 <- scxwedar2[-c(34590:34591),]
+head(scxwedar3)
+tail(scxwedar3)
+summary(scxwedar3)
+nrow(scxwedar3)
+```
+
+
+ 
+
+##Merging of Datasets
+```{r cars}
+
+hholdTHR <- hholdhrly22  # mirror data without NA and Outliers
+
+head(hholdTHR)  #clean version of hourly dataset with missing values and outliers removed
+nrow(hholdTHR) #34120
+
+
+hdrnames3 <- c("Date", "Hour", "m_apower", "m_rpower", "m_voltage", "m_intensity",  "m_smeter1", "m_smeter2", "m_smeter3", "power_subs", "power_kwh")
+ colnames(hholdTHR) <- hdrnames3
+ 
+ dstmdl <- merge(hholdTHR,scxwedar3, by=c("Date","Hour"), all.x=TRUE, all.y=FALSE)
+ 
+ head(dstmdl)
+# 33891 observations of 27 variables
+ summary(dstmdl)
+ cor(dstmdl[, 3:27 ], method = "pearson", use = "complete.obs")
+library("corrgram")
+corrgram(dstmdl[, 3:27 ], order=TRUE, lower.panel=panel.shade,
+upper.panel=panel.pie, text.panel=panel.txt,
+main="Corrgram of Dataset intercorrelations")
+ 
+
+dstmdlx <- dstmdl[, c(1, 2, 3, 11, 12, 13, 14, 15, 16, 17, 21, 22, 23)]
+head(dstmdlx)
+summary(dstmdlx)
+
+```
+  
+
+## Excluded. This analysis not done
+```{r cars}
+# Prepare Dataset for Multinormial Regression and Classification with Ordered Response  Variable
+
+dstmdlx3 <- dstmdlx
+head(dstmdlx3)
+normalize <- function(x) {
+               return ((x - min(x)) / (max(x) - min(x))) }
+
+#Next we use the lapply function to efficiently normalize the entire dataframe
+
+dstmdlx3[ , 5:13]<- as.data.frame(lapply(dstmdlx3[ , 5:13], normalize))
+#dstmdlx3$power_kwh <- dstmdlx$power_kwh
+#dstmdlx3$m_apower <- dstmdlx$m_apower
+#dstmdlx3$wdate <- dstmdlx$wdate
+#dstmdlx3$hrofday <- dstmdlx$hrofday
+
+#transform the potential class variables to categorical
+dstmdlx3$cm_apower <- cut(dstmdlx3$m_apower, 4, labels=c('Low','Medium','High', 'VeryHigh'))
+dstmdlx3$cpower_kwh <- cut(dstmdlx3$power_kwh, 4, labels=c('Low','Medium','High', 'VeryHigh'))
+
+with(dstmdlx3, table(cm_apower, cpower_kwh))
+
+#day of the week and month of the year (few time series are weekly)
+library(lubridate)
+dstmdlx3 <- data.table(dstmdlx3)
+
+
+
+
+#these will offer numeric values
+dstmdlx3$monthofyr <- month((dstmdlx3$Date))
+dstmdlx3$dayofwk <- wday(dstmdlx3$Date)
+
+# These will offer ordered factors
+dstmdlx3$monthabb <- with(dstmdlx3, month.abb[dstmdlx3$monthofyr])
+dstmdlx3$monthabb <- factor(dstmdlx3$monthabb, ordered = TRUE, 
+                                levels = c("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"))
+dstmdlx3$dayofwk <- factor(dstmdlx3$dayofwk, ordered = TRUE, 
+                                levels = c('Sun','Mon','Tue','Wed','Thur','Fri','Sat'))
+
+dstmdlx3$dayofwk <- strftime(dstmdlx3$Date,'%a')
+
+
+
+#wday(x, label = FALSE, abbr = TRUE, week_start = getOption("lubridate.week.start", 7),locale = Sys.getlocale("LC_TIME"))
+
+head(dstmdlx3)
+str(dstmdlx)
+
+#
+
+
+
+
+```
+
+
+
+
+# AGGREGATION OF MERGED DATASET IN DAILY WEEKLY AND MONTHLY VERSIONS fOR NEURALNETS
+```{r cars}
+mgdata <- dstmdlx
+head(mgdata)
+
+
+
+library(data.table)
+library(zoo)
+mgdata$yearmon <- as.yearmon(mgdata$Date, "%m/%Y")
+mgdata$wkofyr <-lubridate::week(ymd(mgdata$Date))
+mgdata$yr <-  strftime(ymd(mgdata$Date),'%Y')
+
+head(mgdata)
+
+mgdata <- as.data.table(mgdata)
+setkey(mgdata, yr, yearmon, wkofyr, Date)
+
+# aggregate data by month, target is active power for time series
+mgdata_mnthly <- as.data.frame(mgdata[, j=list(apower_mna= mean(m_apower, na.rm = TRUE), powerkwh_mna = mean(power_kwh, na.rm = TRUE), Temp_mna = mean(Temp, na.rm = TRUE), Humd_mna = mean(Humd, na.rm = TRUE), Pressure_mna = mean(Pressure, na.rm = TRUE), WndSpd_mna = mean(WndSpeed, na.rm = TRUE)), by = list(yearmon)])
+
+
+# aggregate data by WEEK, target is active power for time series
+
+
+mgdata_wkly <- as.data.frame(mgdata[, j=list(apower_wka= mean(m_apower, na.rm = TRUE), powerkwh_wka = mean(power_kwh, na.rm = TRUE), Temp_wka = mean(Temp, na.rm = TRUE), Humd_wka = mean(Humd, na.rm = TRUE), Pressure_wka = mean(Pressure, na.rm = TRUE), WndSpd_wka = mean(WndSpeed, na.rm = TRUE)), by = list(yr, wkofyr)])
+
+#data set is grouped by year ,then week of year
+
+
+# aggregate data by DAY, target is active power for time series
+
+mgdata_dly <- as.data.frame(mgdata[, j=list(apower_dla= mean(m_apower, na.rm = TRUE), powerkwh_dla = mean(power_kwh, na.rm = TRUE), Temp_dla = mean(Temp, na.rm = TRUE), Humd_dla = mean(Humd, na.rm = TRUE), Pressure_dla = mean(Pressure, na.rm = TRUE), WndSpd_dla = mean(WndSpeed, na.rm = TRUE)), by = list(Date)])
+
+#data set is grouped by year ,then week of year by = c('Date'))] #data set is grouped by Days dat
+
+
+#these will offer numeric values
+require(zoo)
+require(lubridate)
+mgdata_mnthly$month_abb <- with(mgdata_mnthly, format(yearmon, "%b"))
+#mgdata_wkly$dayofwk <- wday(lubridate:::ymd(mgdata_wkly$Date))  # wrong code n Date attribute
+
+# These will offer ordered factors
+#mgdata_mnthly$monthabb <- factor(mgdata_mnthly$monthabb, ordered = TRUE, 
+                                #levels = c("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"))
+
+library(lubridate)
+mgdata_dly$dyofyr <- yday(ymd(mgdata_dly$Date))
+
+
+head(mgdata_mnthly)
+head(mgdata_wkly)
+head(mgdata_dly, 20)
+
+library(zoo)
+plot(mgdata_mnthly, xlim=c(0, 50), ylim=c(0, 4))
+plot(mgdata_wkly)
+plot(mgdata_dly)
+
+write.csv(mgdata_mnthly, file = "D:/BigDataAnalytics/Capstone/mgdata_monthly.csv",row.names=FALSE)
+write.csv(mgdata_wkly, file = "D:/BigDataAnalytics/Capstone/mgdata_wkly.csv",row.names=FALSE)
+write.csv(mgdata_dly, file = "D:/BigDataAnalytics/Capstone/mgdata_dly.csv",row.names=FALSE)
+
+#model versions of daily dataset (aggregated)
+mgdata_dly_1 <- mgdata_dly[c(17:380), ]
+mgdata_dly_2 <- mgdata_dly[c(381:746), ]
+mgdata_dly_3 <- mgdata_dly[c(747:1110), ]
+mgdata_dly_4 <- mgdata_dly[c(1111:1445), ]
+write.csv(mgdata_dly_4, file = "D:/BigDataAnalytics/Capstone/mgdata_dly_4.csv",row.names=FALSE)
+
+tail(mgdata_dly_1)
+
+```
+
+
+
+```
+
+
+
+
+
+
+# ELECTRICTY CONSUMPTION DATA PREDICTION MONTHLY
+```{r cars}
+
+# First Predict based on days of the year
+#Load Library
+library(e1071)
+head(mgdata_dly_1) 
+
+#Scatter Plot
+mgdata_dly_1$ndofyr <- mgdata_dly_1$dyofyr - 182
+head(mgdata_dly_1)
+mgdatad1 <- mgdata_dly_1[ , c(2, 9)]
+
+plot(mgdatad1$apower_dla ~ mgdatad1$ndofyr,  main="Active Power cons overlaid SVM Prediction (wrt day_of_year) Yr2007 Jan1 = -181")
+
+
+#Regression with SVM
+mgdata1_svm = svm(apower_dla~ndofyr, mgdatad1)
+
+#Predict using SVM regression
+predYsvm_1 = predict(mgdata1_svm, mgdatad1)
+
+predYsvm_1
+
+#Overlay SVM Predictions on Scatter Plot
+points(mgdatad1$ndofyr, predYsvm_1, col = "red", pch=16 )
+
+
+##Calculate parameters of the SVR model
+#Find value of W
+W = t(mgdata1_svm$coefs) %*% mgdata1_svm$SV   # 0.4962209
+#Find value of b
+b = mgdata1_svm$rho    # -0.4714167
+## RMSE for SVR Model
+#Calculate RMSE 
+library(met)
+RMSEsvm=rmse(predYsvm_1,mgdatad1$apower_dla)   # 0.2844464
+
+
+
+
+
+
+
+# Second Predict based on days of the year for total power consumption
+#Load Library
+library(e1071)
+ 
+#Scatter Plot
+mgdata_dly_1$ndofyr <- mgdata_dly_1$dyofyr - 182
+head(mgdata_dly_1)
+mgdatad1 <- mgdata_dly_1[ , c(3, 9)]
+
+head(mgdatad1)
+plot(mgdatad1$powerkwh_dla ~ mgdatad1$ndofyr,  main="Total Power cons overlaid SVM Prediction (wrt day_of_year) Yr2007 Jan1 = -181")
+
+#Regression with SVM
+mgdata1_svm = svm(powerkwh_dla~ndofyr, mgdatad1, kernel='radial',gamma=2.0,cost=200)
+
+#Predict using SVM regression
+predYsvm_1 = predict(mgdata1_svm, mgdatad1)
+predYsvm_1
+#Overlay SVM Predictions on Scatter Plot
+points(mgdatad1$ndofyr, predYsvm_1, col = "red", pch=16 )
+
+##Calculate parameters of the SVR model
+#Find value of W
+W1 = t(mgdata1_svm$coefs) %*% mgdata1_svm$SV   # 0.4962209
+#Find value of b
+b1 = mgdata1_svm$rho    # -0.4714167
+
+## RMSE for SVR Model
+#Calculate RMSE 
+library(Metrics)
+RMSEsvm2=rmse(predYsvm_1,mgdatad1$apower_dla)   # 0.2844464
+
+
+## Tuning SVR model by varying values of maximum allowable error and cost parameter
+
+
+
+## Thirds Predict Monthly Consumpion Using External Predictors
+mgdatap<- mgdata_dly_1[ , c(3,4,5,6,7,9)]
+head(mgdatap)
+
+
+#Nomalization is not really necessaery for SVM Regression as data is internally scaled by default
+# set three levels for power consumtion
+
+
+#Regression with SVM
+
+install.packages("e1071")
+library(e1071)
+#Import Library
+require(e1071) #Contains the SVM 
+svtrain <- mgdatap[, c(1:6)]
+head(svtrain)
+
+#prepare test data from 2008 data
+mgdata_dly_2$ndofyr <- mgdata_dly_2$dyofyr - 182
+head(mgdata_dly_2)
+mgdatap2 <- mgdata_dly_2[ , c(3,4,5,6,7,9)]
+head(mgdatap2)
+svtest <-mgdatap2[, c(2:6)]
+
+
+# there are various options associated with SVM training; like changing kernel, gamma and C value.
+
+# create model
+#model <- svm(power_kwh~Temp+Humd+Pressure+Precipt+SunShD+Snowfall+CCloudT+Radiatn+WndSpeed,data=svtrain,kernel='radial',gamma=0.2,cost=100)
+
+#model <- svm(power_kwh~Temp+Humd+Pressure+Precipt+SunShD,data=svtrain,kernel='radial',gamma=0.2,cost=100)
+
+#model_svm <- svm(powerkwh_dla~Temp_dla+Humd_dla+Pressure_dla+WndSpd_dla+ndofyr,data=svtrain, kernel='radial',gamma=0,cost=10)
+
+model_svm <- svm(powerkwh_dla~ndofyr,data=svtrain, kernel='radial',gamma=0,cost=10)
+
+#Predict Output
+preds <- predict(model_svm,svtest)
+table(preds)
+plot(preds, main="SVM prediction plot. Indicates Missing Attributes")
+
+
+#Model with Temperature Alone
+head(svtrain)
+plot(svtrain$powerkwh_dla ~ svtrain$Temp_dla,  main="Total Power overlaid with SVM (wrt Temp) Daily Average")
+
+model_Tsvm <- svm(powerkwh_dla~Temp_dla,data=svtrain, kernel='radial',gamma=1,cost=300)
+
+#Predict Output
+predsT <- predict(model_Tsvm,svtrain)
+table(predsT)
+points(svtrain$Temp_dla, predsT, col = "red", pch=16 )
+
+
+
+# REPEAT PREDICTION with TEMPERATURE and DAY of YEAR
+head(svtrain)
+plot(svtrain$powerkwh_dla ~ svtrain$ndofyr,  main="Total Power overlaid with SVM (wrt Temp & Ndofyr) monthly")
+
+#Regression with SVM
+svdata1_svm = svm(powerkwh_dla~Temp_dla+ndofyr, data=svtrain, kernel='radial',gamma=0.2,cost=100)
+
+#Predict using SVM regression
+predV = predict(svdata1_svm, svtrain)
+predV
+#Overlay SVM Predictions on Scatter Plot
+points(svtrain$ndofyr+svtrain$Temp_dla, predV, col = "red", pch=16 )
+
+
+
+
+# CHECK OTHER FEATURES
+
+
+# Humidity Alone
+#Model with Temperature Alone
+head(svtrain)
+plot(svtrain$powerkwh_dla ~ svtrain$Humd_dla,  main="Total Power overlaid with SVM (wrt Humidity) Daily Average")
+
+model_Hsvm <- svm(powerkwh_dla~Humd_dla,data=svtrain, kernel='radial',gamma=1,cost=300)
+
+#Predict Output
+predsH <- predict(model_Hsvm,svtrain)
+table(predsH)
+points(svtrain$Humd_dla, predsH, col = "brown", pch=16 )
+
+
+# Wind Speed  Alone
+#Model with Temperature Alone
+head(svtrain)
+plot(svtrain$powerkwh_dla ~ svtrain$WndSpd_dla,  main="Total Power overlaid with SVM (wrt WindSpeed) Daily Average")
+model_Wsvm <- svm(powerkwh_dla~WndSpd_dla,data=svtrain, kernel='radial',gamma=1,cost=300)
+#Predict Output
+predsW <- predict(model_Wsvm,svtrain)
+table(predsW)
+points(svtrain$WndSpd_dla, predsW, col = "purple", pch=16 )
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Svvvvvvvvv
+```{r cars}
+
+
+#Model with Temperature Alone with entire dataset Dec2006 to Nov 2010
+head(mgdata_dly)
+plot(mgdata_dly$powerkwh_dla ~ mgdata_dly$Temp_dla,  main="Total Power overlaid with SVM Prediction (wrt Temp 47months) DLA")
+model_TFsvm <- svm(powerkwh_dla~Temp_dla,data=mgdata_dly, kernel='radial',gamma=2.5,cost=200)
+#Predict Output
+predsTF <- predict(model_TFsvm,mgdata_dly)
+points(mgdata_dly$Temp_dla, predsTF, col = "violet", pch=16 )
+
+
+
+#Model with Humidity Alone with entire dataset Dec2006 to Nov 2010
+head(mgdata_dly)
+plot(mgdata_dly$powerkwh_dla ~ mgdata_dly$Humd_dla,  main="Total Power overlaid with SVM Prediction (wrt Humidity 47months) DLA")
+model_HFsvm <- svm(powerkwh_dla~Humd_dla,data=mgdata_dly, kernel='radial',gamma=2.5,cost=200)
+#Predict Output
+predsHF <- predict(model_HFsvm,mgdata_dly)
+points(mgdata_dly$Humd_dla, predsHF, col = "brown", pch=16 )
+
+#Model with Wind Spead Alone with entire dataset Dec2006 to Nov 2010
+head(mgdata_dly)
+plot(mgdata_dly$powerkwh_dla ~ mgdata_dly$WndSpd_dla,  main="Total Power overlaid with SVM Prediction (wrt Wind Speed 47months) DLA")
+model_WFsvm <- svm(powerkwh_dla~WndSpd_dla,data=mgdata_dly, kernel='radial',gamma=2.5,cost=200)
+#Predict Output
+predsWF <- predict(model_WFsvm,mgdata_dly)
+points(mgdata_dly$WndSpd_dla, predsWF, col = "brown", pch=16 )
+
+
+#Model with Day of the Year Alone with entire dataset Dec2006 to Nov 2010
+head(mgdata_dly)
+plot(mgdata_dly$powerkwh_dla ~ mgdata_dly$dyofyr,  main="Total Power overlaid with SVM Prediction (wrt Day of Year 47months) DLA")
+model_DFsvm <- svm(powerkwh_dla~dyofyr,data=mgdata_dly, kernel='radial',gamma=3,cost=200)
+#Predict Output
+predsDF <- predict(model_DFsvm,mgdata_dly)
+points(mgdata_dly$dyofyr, predsDF, col = "green", pch=16 )
+
+
+#Model with Day of the Year Alone with entire dataset Dec2006 to Nov 2010
+head(mgdata_dly)
+plot(mgdata_dly$powerkwh_dla ~ mgdata_dly$Date,  main="Total Power overlaid with SVM Prediction (wrt Date 47months) DLA")
+model_DFsvm <- svm(powerkwh_dla~Date,data=mgdata_dly, kernel='radial',gamma=3,cost=200)
+#Predict Output
+predsDF <- predict(model_DFsvm,mgdata_dly)
+points(mgdata_dly$Date, predsDF, col = "green", pch=16 )
+
+
+
+#mgdata_dly_1$ndofyr <- mgdata_dly_1$dyofyr - 182
+
+```
+
+
+
+
+
+
+
+
+
+
+# Putting it All Together
+```{r cars}
+
+#nls fitting
+tail(mgdata_dly)
+library(lubridate)
+startD <- lubridate::ymd_hms("2006-12-16  00:59:00", tz = "Europe/Paris")
+mgdata_dly$tnofdays <- as.duration(startD%--%mgdata_dly$Date)/ddays((1))
+
+
+#fit.nlspwr <-nls(powerkwh_dla ~ Temp_dla + Humd_dla + WndSpd_dla + alpha*sin(pi*(mgdata_dly$tnofdays/366) + phi),
+  #start=list( alpha=3.5, phi=14.0), data=mgdata_dly, algorithm = "plinear") #data not fitting
+
+# scale data for nls
+mgdata_dsc <- mgdata_dly[, c(2:7)]
+maxim = apply(mgdata_dsc , 2 , max)
+minim = apply(mgdata_dsc, 2 , min)
+scaled = as.data.frame(scale(mgdata_dsc, center = minim, scale = maxim - minim))
+tail(scaled)
+
+scaled$tnofdays <- mgdata_dly$tnofdays
+
+# Random sampling
+samplesize = 0.65 * nrow(mgdata_dsc)
+set.seed(10)
+index = sample( seq_len ( nrow ( mgdata_dsc ) ), size = samplesize )
+
+# Create training and test set
+mgdata_dsctrain = mgdata_dsc[ index, ]
+mgdata_dsctest = mgdata_dsc[ -index, ]
+
+
+## Fit neural network 
+# install library
+install.packages("neuralnet")
+
+# load library
+library(neuralnet)
+
+# creating training and test set
+ptrainNN = scaled[index , ]
+ptestNN = scaled[-index , ]
+
+# fit neural network
+set.seed(20)
+NN = neuralnet(powerkwh_dla ~ Temp_dla + Humd_dla + Pressure_dla + WndSpd_dla + tnofdays, ptrainNN, hidden = 3 , linear.output = TRUE )
+
+# plot neural network
+plot(NN)
+
+## Prediction using neural network
+pred_ptestNN = compute(NN, ptestNN[,c(3:7)])
+pred_ptestNN = (pred_ptestNN$net.result * (max(mgdata_dsc$powerkwh_dla) - min(mgdata_dsc$powerkwh_dla))) + min(mgdata_dsc$powerkwh_dla)
+
+
+plot(pred_ptestNN, col='blue', pch=16, ylab = "predicted rating NN", xlab = "real rating", main= "Three Layer ANN")
+
+# Calculate Root Mean Square Error (RMSE)
+RMSE.NN = (sum((mgdata_dsctest$powerkwh_dla- pred_ptestNN)^2) / nrow(mgdata_dsc)) ^ 0.5
+
+
+
+#plot(scaled$powerkwh_dla ~ scaled$tnofdays,  main="Total Power overlaid with NLS (wrt Days) Daily Average")
+#nlspwr <-nls(powerkwh_dla ~ alpha*sin(2*pi*(scaled$tnofdays/366) + phi),
+  # start=list(alpha=2.5, phi=14.0), data=scaled, algorithm = "plinear")
+#Predict Output
+#predNLSpwr <- predict(nlspwr,scaled)
+#points(scaled$tnofdays, predNLSpwr, col = "purple", pch=16 )
+#fit.nlspwr <-nls(powerkwh_dla ~ Temp_dla + Humd_dla + WndSpd_dla + alpha*sin(pi*(mgdata_dly_1$tnofdays/366) + phi),
+   #start=list( alpha=3.5, phi=14.0), data=mgdata_dly_1, algorithm = "plinear")
+
+
+```
+
+
+
+
+
+
+
+
+```
+
+
+##Hourly forecasts for Power Consumption
+```{r}
+##Hourly forecasts fr=or Power Consumption
+pwrstfrc <- dstmdlx
+head(pwrstfrc)
+nrow(pwrstfrc)
+#the last 100days and most relevant  attributes pwr, temp, Humd, wndspd, press date and Hr
+pwrstfrc_1 <- pwrstfrc[c(33880:34120), c(1,2,4,5,6, 7, 13)]
+
+head(pwrstfrc_1, 60)
+plot(pwrstfrc_1$power_kwh)
+lines(pwrstfrc_1$power_kwh)
+
+## The power consumption is lowests midnight to around 4am and then peaks again at about 7am and then rises to around middday. The peaks for each day is different based on the daily averages we carried out earlier.
+## From these perhaps an appropriate method is predicting hourly temperatures is to have a handle on the month hourly averages.
+
+library(data.table)
+library(zoo)
+pwrstfrc$yearmon <- as.yearmon(pwrstfrc$Date, "%m/%Y")
+
+pwrstfrc <- as.data.table(pwrstfrc)
+setkey(pwrstfrc, Hour, yearmon)
+head(pwrstfrc)
+head(dstmdlx)
+
+# aggregate data by month and hour, target is active power for time series
+pwrstfrc_agg <- as.data.frame(pwrstfrc[, j=list(apower_agg= mean(m_apower, na.rm = TRUE), powerkwh_agg = mean(power_kwh, na.rm = TRUE), Temp_agg = mean(Temp, na.rm = TRUE), Humd_agg = mean(Humd, na.rm = TRUE), Pressure_agg = mean(Pressure, na.rm = TRUE), WndSpd_agg = mean(WndSpeed, na.rm = TRUE)), by = list(yearmon, Hour)])
+
+head(pwrstfrc_agg)
+plot(pwrstfrc_agg$powerkwh_agg~pwrstfrc_agg$yearmon, col='violet', pch=16)
+lines(pwrstfrc_agg$powerkwh_agg)
+with(pwrstfrc_agg[c(1:100), ], lines(powerkwh_agg, col='brown', pch=16))
+with(pwrstfrc[c(33900:34120), ], lines(power_kwh, col='black', pch=16))
+
+library(zoo)
+pwrstfrc_1d <- zoo(pwrstfrc_1)
+plot.ts(pwrstfrc_1[, c(3:7) ])
+pwrstfrc_3 <- pwrstfrc[c(34000:34120), c(4,5,6, 7, 13)]
+plot.ts(pwrstfrc_3)
+```
+
+
+
+
+
+
+
+
+#Time Series Forecasts for Power Consumption DAILY
+```{r}
+#First We explore the daily time series
+library(stats)
+head(mgdata_dly)
+prds <- seq(as.Date("2006-12-16"), as.Date("2010-11-26"), by = "day")  # start and end dates
+tspwr <- ts(mgdata_dly[ , 3], start=c(2006, as.numeric(format(prds[1], "%j"))), frequency=365)
+
+# decompose stationary and other components
+tspwr.fit <- stl(tspwr, s.window= "periodic", t.window=)
+plot(tspwr)
+plot(tspwr.fit)
+
+# visualize seasonal decomposition
+library(forecast)
+monthplot(tspwr.fit, xlab="", ylab="", choice = "seasonal", col = "green", pch=16, main="Monthplot of daily Electricity Consumption TS")
+
+## use ets exponential fit to choose ARIMA terms
+library(forecast)
+fitpwr1 <- ets(tspwr)
+fitpwr1
+forecast(fitpwr1, 2)
+accuracy(fitpwr1)
+
+
+plot(forecast(tspwr.fit, method=c("arima")), main="Daily Electricity Consumption Forecasts",
+ylab="Total Power (KWh)", xlab="Time", flty=2)
+
+```
+
+
+
+
+
+#Time Series Forecasts for Power Consumption HOURLY
+```{r cars}
+
+require(forecast)
+
+pwrhrly <- hholdTHR
+pwrhrly$power_subs=pwrhrly$m_smeter1+pwrhrly$m_smeter2+pwrhrly$m_smeter3
+pwrhrly$power_kwh = 0.001*pwrhrly$power_subs + pwrhrly$m_apower
+
+pwrhrly$thr <- (paste(pwrhrly$Date, paste(pwrhrly$Hour, "00", sep=""), sep=" "))
+head(pwrhrly)
+tail(pwrhrly)
+class(pwrhrly$thr)
+
+pwrhrly <- pwrhrly[ , c(1,2, 11, 12)]
+
+library(lubridate)
+ pwrhrly$thr2 <- ymd_hm(as.character(pwrhrly$thr), tz ="Europe/Paris")
+
+head(pwrhrly)
+tail(pwrhrly)
+
+
+nrow(pwrhrly)   #34120
+class(pwrhrly$thr2)
+
+## in order to have finer resolution we are going to subset the last 24 * 10 = 240hours of data, power_kwh and hourly information
+
+pwrhrx <- pwrhrly[c(33880:34120), c(2,3,5)]
+dat <- pwrhrx$thr2
+head(pwrhrx)
+tail(pwrhrx)
+
+#First We explore the daily time series
+library(stats)
+
+##Here's how to use the ts() function in base R (assuming your data X are contained in the data frame dat). You'll need to specify the first year and hour for start (you don't need end), and frequency will be the number of hours in a year.
+
+
+startHour <- 24*(as.Date("2010-11-16 21:00:00")-as.Date("2010-1-1 00:00:00"))
+tspwrx <- ts(pwrhrx$power_kwh,start=c(2010,startHour),frequency=24*365)
+
+
+# decompose into seasonal, trend and irregular  components
+# tspwrx.fit <- decompose(tspwrx, type = c("additive", "multiplicative")) #time series has less than two periods
+
+#tspwrx.fit <- stl(tspwrx, s.window= "", t.window=)
+
+plot(tspwrx, main="Hourly time series, last 240hours")
+
+#plot(tspwrx.fit, main ="Decomposition of Hourly Time Series Data, c(2010, 7845) Start")
+
+
+## use ets exponential fit ETS  to choose ARIMA terms
+library(forecast)
+fitpwrx <- ets(tspwrx)
+fitpwrx
+forecast(fitpwrx, 10)
+accuracy(fitpwrx)
+
+
+plot(forecast(fitpwrx, method=c("rwdrift")), main="Hourly Electricity  Forecasts",
+ylab="Total Power (KWh)", xlab="Time", flty=2)   # model with ARIMA
+
+## AUto.Arima
+pwr_aa = auto.arima(tspwrx)
+fpwr_aa = forecast(pwr_aa, h=24)
+plot(fpwr_aa)
+
+## TBATS
+pwr_tbats = tbats(tspwrx)
+fpwr_tbats = forecast(pwr_tbats, h=24)
+plot(fpwr_tbats)
+
+```
+  
+
+#Time Series Forecasts for Power Consumption HOURLY version 2
+```{r cars}
+
+require(forecast)
+ information
+
+## To facilitate decoposition take 750 days of hourly instances or 750*24 = 18000, so range 16120 to 34120
+pwrhrx2 <- pwrhrly[c(1620:34120), c(2,3,5)]
+dat2 <- pwrhrx2$thr2
+head(pwrhrx2)
+tail(pwrhrx2)
+
+#First We explore the daily time series
+library(stats)
+
+##Here's how to use the ts() function in base R (assuming your data X are contained in the data frame dat). You'll need to specify the first year and hour for start (you don't need end), and frequency will be the number of hours in a year.
+
+
+start2Hour <- 24*(as.Date("2007-02-22 13:00:00")-as.Date("2007-1-1 00:00:00"))
+tspwrx2 <- ts(pwrhrx$power_kwh,start=c(2007,start2Hour),frequency=24*365)
+
+
+# decompose into seasonal, trend and irregular  components
+#tspwrx2.fit <- decompose(tspwrx2, type = c("additive", "multiplicative"))
+
+tspwrx2.fit <- stl(tspwrx2, s.window= "", t.window=)
+plot(tspwrx2, main="Hourly time series")
+plot(tspwrx2.fit, main ="Decomposition of Hourly Time Series Data,")
+
+
+## use ets exponential fit ETS  to choose ARIMA terms
+library(forecast)
+fitpwrx2 <- ets(tspwrx2)
+fitpwrx2
+forecast(fitpwrx2, 10)
+accuracy(fitpwrx2)
+
+
+plot(forecast(fitpwrx2, method=c("arima")), main="Hourly Electricity  Forecasts",
+ylab="Total Power (KWh)", xlab="Time", flty=2)   # model with ARIMA
+
+## AUto.Arima
+pwr_aa2 = auto.arima(tspwrx2)
+fpwr_aa2 = forecast(pwr_aa2, h=72)
+plot(fpwr_aa2)
+
+## TBATS
+pwr_tbats2 = tbats(tspwrx2)
+fpwr_tbats2 = forecast(pwr_tbats2, h=72)
+plot(fpwr_tbats2)
+
+barplot(c(ETS=fitpwrx$aic, ARIMA=pwr_aa$aic, TBATS=pwr_tbats$AIC),
+    col="light blue",
+    ylab="AIC")
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+`
